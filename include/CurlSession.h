@@ -4,13 +4,13 @@
 #include <map>
 #include <vector>
 #include <string>
+#include <mutex>
 #include <algorithm>
 
 #include "curl/curl.h"
 #include "entities.h"
 #include "Commons.h"
 #include "RequestParams.h"
-#include "utils/json/Serializable.h"
 
 static inline void ltrim(std::string &s) {
     s.erase(s.begin(), std::find_if(s.begin(), s.end(),

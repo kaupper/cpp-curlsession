@@ -36,7 +36,7 @@ RequestParams & RequestParams::SetHeaders(const std::map<std::string, std::strin
     return *this;
 }
 
-RequestParams & RequestParams::SetParams(const Serializable &params)
+RequestParams & RequestParams::SetParams(const jsonserializer::Serializable &params)
 {
     type = Type::JSON;
     this->params = params.Serialize();

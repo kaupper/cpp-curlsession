@@ -7,7 +7,7 @@
 #include "curl/curl.h"
 
 #include "Commons.h"
-#include "utils/json/Serializable.h"
+#include "include/Serializable.h"
 
 namespace curl
 {   
@@ -29,7 +29,7 @@ namespace curl
         RequestParams & SetUrl(const std::string &url);
         RequestParams & SetHeaders(const std::map<std::string, std::string> &headers);
         // set params as JSON
-        RequestParams & SetParams(const Serializable &params);
+        RequestParams & SetParams(const jsonserializer::Serializable &params);
         // set params URL encoded
         RequestParams & SetParams(const std::map<std::string, std::string> &params);
         // copy params without further processing
