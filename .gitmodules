@@ -1,0 +1,3 @@
+[submodule "cpp-jsonserializer"]
+	path = cpp-jsonserializer
+	url = git@github.com:kaupper/cpp-jsonserializer
