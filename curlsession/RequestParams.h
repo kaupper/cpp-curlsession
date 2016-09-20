@@ -7,7 +7,7 @@
 #include "curl/curl.h"
 
 #include "Commons.h"
-#include "include/Serializable.h"
+#include "jsonserializer/Serializable.h"
 
 namespace curl
 {   

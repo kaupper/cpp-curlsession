@@ -16,7 +16,7 @@ ${PROJECT_SOURCE_DIR}/src/RequestParams.cpp
 ${PROJECT_SOURCE_DIR}/src/entities.cpp
 )
 
-include_directories(${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR})
+include_directories(${PROJECT_SOURCE_DIR}/curlsession ${PROJECT_SOURCE_DIR})
 include_directories(${OPENSSL_INCLUDE_DIRS} ${CURL_INCLUDE_DIRS})
 link_directories(${OPENSSL_LIBRARIES} ${CURL_LIBRARIES})
 
