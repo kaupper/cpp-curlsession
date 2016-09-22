@@ -100,30 +100,20 @@ std::string CurlSession::GetCookieByName(const std::string &name, const std::vec
 }
 
 
-Response CurlSession::DoSingleRequest(RequestParams &&params)
-{
-    return DoSingleRequest(params);
-}
-
-Response CurlSession::DoSingleRequest(RequestParams &params)
+Response CurlSession::DoSingleRequest(const RequestParams &params)
 {
     return CurlSession().DoRequest(params);
 }
 
-
-Response CurlSession::DoRequest(RequestParams &&params)
-{
-    return DoRequest(params);
-}
-
-Response CurlSession::DoRequest(RequestParams &requestParams)
+Response CurlSession::DoRequest(const RequestParams &pparams)
 {
     static std::mutex mutex;
+    auto requestParams = pparams;
     auto &url = requestParams.GetUrl();
     auto &headers = requestParams.GetHeaders();
     auto &params = requestParams.GetParams();
     auto &method = requestParams.GetMethod();
-    
+        
     Response response;
     mutex.lock();
     if(curl_handle) {
@@ -184,7 +174,9 @@ Response CurlSession::DoRequest(RequestParams &requestParams)
                 curl_easy_setopt(curl_handle, CURLOPT_HTTPPOST, formpost);
             }
             curl_easy_setopt(curl_handle, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
         } else if(method == Method::GET) {
+            curl_easy_setopt(curl_handle, CURLOPT_HTTPGET, 1);
             curl_easy_setopt(curl_handle, CURLOPT_URL, (url + '?' + params).c_str());
         }
         

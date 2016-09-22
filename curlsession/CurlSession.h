@@ -54,13 +54,11 @@ namespace curl
         
         static std::string GetCookieByName(const std::string &name, const std::vector<std::string> &cookies);
         
-        static Response DoSingleRequest(RequestParams &params);
-        static Response DoSingleRequest(RequestParams &&params);
+        static Response DoSingleRequest(const RequestParams &params);
         
         const Response& GetLastResponse() { return lastResponse; }
         
-        Response DoRequest(RequestParams &params);
-        Response DoRequest(RequestParams &&params);
+        Response DoRequest(const RequestParams &params);
     };
 }
 
