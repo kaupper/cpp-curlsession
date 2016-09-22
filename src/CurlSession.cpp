@@ -133,6 +133,8 @@ Response CurlSession::DoRequest(RequestParams &requestParams)
         
         // append headers
         struct curl_slist *header = NULL;
+        struct curl_httppost *formpost = nullptr;
+        
         for(auto& entry : headers) {
             if(entry.first == "Content-Type") {
                 switch(requestParams.GetType()) {
@@ -157,8 +159,30 @@ Response CurlSession::DoRequest(RequestParams &requestParams)
  
         // set url depending on method
         if(method == Method::POST) {
-            curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, params.c_str());
-            curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, params.size());
+            if(requestParams.GetType() != Type::MULTIPART) {
+                curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, params.c_str());
+                curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, params.size());
+            } else {
+                // set multipart form data
+                struct curl_httppost *lastptr = nullptr;
+                
+                for(auto &file : requestParams.GetFiles()) {
+                    curl_formadd(&formpost,
+                                 &lastptr,
+                                 CURLFORM_COPYNAME, file.first.c_str(),
+                                 CURLFORM_FILE, file.second.c_str(),
+                                 CURLFORM_END);
+                }
+                
+                for(auto &param : requestParams.GetMultipartParams()) {
+                    curl_formadd(&formpost,
+                                 &lastptr,
+                                 CURLFORM_COPYNAME, param.first.c_str(),
+                                 CURLFORM_COPYCONTENTS, param.second.c_str(),
+                                 CURLFORM_END);
+                }
+                curl_easy_setopt(curl_handle, CURLOPT_HTTPPOST, formpost);
+            }
             curl_easy_setopt(curl_handle, CURLOPT_URL, url.c_str());
         } else if(method == Method::GET) {
             curl_easy_setopt(curl_handle, CURLOPT_URL, (url + '?' + params).c_str());
@@ -177,6 +201,9 @@ Response CurlSession::DoRequest(RequestParams &requestParams)
         
 		res = curl_easy_perform(curl_handle);
         curl_slist_free_all(header);
+        if(formpost != nullptr) {
+            curl_formfree(formpost);
+        }
         
         if(res == CURLE_OK && requestParams.CookiesEnabled()) {
             response.cookies = ExtractCookies(curl_handle);

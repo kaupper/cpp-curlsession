@@ -52,10 +52,29 @@ RequestParams & RequestParams::SetParams(const std::map<std::string, std::string
 
 RequestParams & RequestParams::SetParams(const std::string &params)
 {
-    type = Type::MULTIPART;
+    type = Type::NOTHING;
     this->params = params;
     return *this;
 }
+
+RequestParams & RequestParams::SetParams(const std::map<std::string, std::string> &params, 
+                                         const std::map<std::string, std::string> &pathnames)
+{
+    type = Type::MULTIPART;
+    files = pathnames;
+    multipartParams = params;
+    return *this;
+}
+
+RequestParams & RequestParams::SetParams(const jsonserializer::Serializable &params, const std::map<std::string, std::string> &pathnames)
+{
+    std::map<std::string, std::string> mappedParams;
+    for(auto it = params.begin(); it != params.end(); ++it) {
+        mappedParams[it.name()] = (*it).asString();
+    }
+    return SetParams(mappedParams, pathnames);
+}
+
 
 RequestParams & RequestParams::SetMethod(const Method &method)
 {
