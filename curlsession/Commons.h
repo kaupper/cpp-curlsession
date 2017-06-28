@@ -35,6 +35,19 @@ namespace curl
         std::vector<Header> headers;
         std::vector<char> content;
         std::vector<std::string> cookies;
+        
+        std::string GetHeader(const std::string &header)
+        {
+            auto it = std::find_if(headers.begin(), headers.end(), [&header](auto & e) {
+                return header == e.key;
+            });
+            
+            if (it == headers.end()) {
+                throw "Header not found!";
+            }
+            
+            return it->value;
+        }
     };
 }
 
