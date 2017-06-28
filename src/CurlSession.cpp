@@ -33,21 +33,24 @@ size_t CurlSession::WriteMemoryCallback(void *contents, size_t size,
 size_t CurlSession::WriteHeaderCallback(void *contents, size_t size,
                                         size_t nmemb, void *userPointer)
 {
-    std::map<std::string, std::string> *map = (std::map<std::string, std::string> *)
-            userPointer;
+    std::vector<Header> *headers = static_cast<std::vector<Header> *>(userPointer);
     std::string header((const char *) contents, size * nmemb);
     auto splitPosition = header.find(":");
     std::string value, key;
+    bool statusLineFound = std::find_if(headers->cbegin(),
+    headers->cend(), [](auto & e) {
+        return e.key == "statusLine";
+    }) != headers->cend();
     
     if (splitPosition != std::string::npos) {
         value = header.substr(splitPosition + 1);
         key = header.substr(0, splitPosition);
         trim(value);
         trim(key);
-        (*map)[key] = value;
-    } else if (map->find("statusLine") == map->end()) {
+        (*headers).push_back({key, value});
+    } else if (!statusLineFound) {
         trim(header);
-        (*map)["statusLine"] = header;
+        (*headers).push_back({"statusLine", header});
     }
     
     return size * nmemb;
