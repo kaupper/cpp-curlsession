@@ -9,39 +9,43 @@ CurlSession::StaticConstructor::StaticConstructor()
 }
 
 CurlSession::CurlSession()
-{ 
-    curl_handle = curl_easy_init(); 
+{
+    curl_handle = curl_easy_init();
     curl_easy_setopt(curl_handle, CURLOPT_COOKIEFILE, "");
-    curl_easy_setopt(curl_handle, CURLOPT_COOKIEJAR, ""); 
+    curl_easy_setopt(curl_handle, CURLOPT_COOKIEJAR, "");
 }
 
 CurlSession::~CurlSession()
 {
-    curl_easy_cleanup(curl_handle); 
+    curl_easy_cleanup(curl_handle);
     curl_handle = 0x0;
 }
 
-size_t CurlSession::WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userPointer)
+size_t CurlSession::WriteMemoryCallback(void *contents, size_t size,
+                                        size_t nmemb, void *userPointer)
 {
     std::vector<char> *result = (std::vector<char> *) userPointer;
-    result->insert(result->end(), (char *)contents, (char *)contents + (size * nmemb));
+    result->insert(result->end(), (char *)contents,
+                   (char *)contents + (size * nmemb));
     return size * nmemb;
 }
 
-size_t CurlSession::WriteHeaderCallback(void *contents, size_t size, size_t nmemb, void *userPointer)
+size_t CurlSession::WriteHeaderCallback(void *contents, size_t size,
+                                        size_t nmemb, void *userPointer)
 {
-    std::map<std::string, std::string> *map = (std::map<std::string, std::string> *) userPointer;
+    std::map<std::string, std::string> *map = (std::map<std::string, std::string> *)
+            userPointer;
     std::string header((const char *) contents, size * nmemb);
-    
     auto splitPosition = header.find(":");
     std::string value, key;
+    
     if (splitPosition != std::string::npos) {
         value = header.substr(splitPosition + 1);
         key = header.substr(0, splitPosition);
         trim(value);
         trim(key);
         (*map)[key] = value;
-    } else if(map->find("statusLine") == map->end()) {
+    } else if (map->find("statusLine") == map->end()) {
         trim(header);
         (*map)["statusLine"] = header;
     }
@@ -52,50 +56,55 @@ size_t CurlSession::WriteHeaderCallback(void *contents, size_t size, size_t nmem
 
 std::vector<std::string> CurlSession::ExtractCookies(CURL *curl_handle)
 {
-    std::vector<std::string> resultingCookies; 
+    std::vector<std::string> resultingCookies;
     struct curl_slist *cookies = {0};
     struct curl_slist *nc;
     CURLcode res;
-
     res = curl_easy_getinfo(curl_handle, CURLINFO_COOKIELIST, &cookies);
-    if(res != CURLE_OK) {
+    
+    if (res != CURLE_OK) {
         return resultingCookies;
     }
-
+    
     nc = cookies;
-    while(nc) {
+    
+    while (nc) {
         resultingCookies.push_back(nc->data);
         nc = nc->next;
     }
-    curl_slist_free_all(cookies);
     
+    curl_slist_free_all(cookies);
     return resultingCookies;
 }
 
-std::string CurlSession::GetCookieByName(const std::string &name, const std::vector<std::string> &cookies)
+std::string CurlSession::GetCookieByName(const std::string &name,
+        const std::vector<std::string> &cookies)
 {
-	size_t last = 0; 
-	size_t next = 0; 
-    for(auto &cookie : cookies) {
-	    last = next = 0;
+    size_t last = 0;
+    size_t next = 0;
+    
+    for (auto &cookie : cookies) {
+        last = next = 0;
         std::vector<std::string> splitted;
-        
         const std::string delimiter = "\t";
         int count = 0;
         
-        while ((next = cookie.find(delimiter, last)) != std::string::npos) { 
-            if(count >= 5) {
-                splitted.push_back(cookie.substr(last, next-last)); 
+        while ((next = cookie.find(delimiter, last)) != std::string::npos) {
+            if (count >= 5) {
+                splitted.push_back(cookie.substr(last, next - last));
             }
+            
             count++;
-            last = next + 1; 
-        } 
+            last = next + 1;
+        }
+        
         splitted.push_back(cookie.substr(last));
         
         if (splitted[0] == name) {
             return splitted[1];
         }
-    }   
+    }
+    
     return "";
 }
 
@@ -105,77 +114,91 @@ Response CurlSession::DoSingleRequest(const RequestParams &params)
     return CurlSession().DoRequest(params);
 }
 
-Response CurlSession::DoRequest(const RequestParams &pparams)
+Response CurlSession::DoRequest(const RequestParams &requestParams)
 {
     static std::mutex mutex;
-    auto requestParams = pparams;
-    auto &url = requestParams.GetUrl();
-    auto &headers = requestParams.GetHeaders();
-    auto &params = requestParams.GetParams();
-    auto &method = requestParams.GetMethod();
-        
+    auto url = requestParams.GetUrl();
+    auto headers = requestParams.GetHeaders();
+    auto params = requestParams.GetParams();
+    auto method = requestParams.GetMethod();
     Response response;
     mutex.lock();
-    if(curl_handle) {
-        std::vector<char>  &responseContent = response.content;
-        std::map<std::string, std::string> &responseHeaders = response.headers;
-        CURLcode res; 
-        
+    
+    if (curl_handle) {
+        auto  &responseContent = response.content;
+        auto &responseHeaders = response.headers;
+        CURLcode res;
         // append headers
         struct curl_slist *header = NULL;
         struct curl_httppost *formpost = nullptr;
         
-        for(auto& entry : headers) {
-            if(entry.first == "Content-Type") {
-                switch(requestParams.GetType()) {
+        // set content type if known and not existent
+        if (requestParams.GetType() != Type::NOTHING) {
+            bool hasContentType = std::find_if(headers.cbegin(), headers.cend(),
+            [](auto & e) {
+                return e.key == "Content-Type";
+            }) != headers.cend();
+            
+            if (!hasContentType) {
+                Header h;
+                h.key = "Content-Type";
+                
+                switch (requestParams.GetType()) {
                     case Type::URL:
-                        entry.second = "application/x-www-form-urlencoded";
+                        h.value = "application/x-www-form-urlencoded";
                         break;
+                        
                     case Type::JSON:
-                        entry.second = "application/json";
+                        h.value = "application/json";
                         break;
+                        
                     case Type::MULTIPART:
-                        entry.second = "multipart/form-data";
-                        break;
-                    case Type::NOTHING:
-                    default:
+                        h.value = "multipart/form-data";
                         break;
                 }
+                
+                headers.push_back(h);
             }
-            std::string headerLine = entry.first + ": " + entry.second;
-            header = curl_slist_append(header, headerLine.c_str());
         }
+        
+        // add all headers
+        for (auto &entry : headers) {
+            header = curl_slist_append(header, (entry.key + ": " + entry.value).c_str());
+        }
+        
         curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, header);
- 
+        
         // set url depending on method
-        if(method == Method::POST) {
-            if(requestParams.GetType() != Type::MULTIPART) {
+        if (method == Method::POST) {
+            if (requestParams.GetType() != Type::MULTIPART) {
                 curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, params.c_str());
                 curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, params.size());
             } else {
                 // set multipart form data
                 struct curl_httppost *lastptr = nullptr;
                 
-                for(auto &file : requestParams.GetFiles()) {
+                for (auto &file : requestParams.GetFiles()) {
                     curl_formadd(&formpost,
                                  &lastptr,
-                                 CURLFORM_COPYNAME, file.first.c_str(),
-                                 CURLFORM_FILE, file.second.c_str(),
+                                 CURLFORM_COPYNAME, file.paramName.c_str(),
+                                 CURLFORM_FILE, file.path.c_str(),
                                  CURLFORM_END);
                 }
                 
-                for(auto &param : requestParams.GetMultipartParams()) {
+                for (auto &param : requestParams.GetMultipartParams()) {
                     curl_formadd(&formpost,
                                  &lastptr,
-                                 CURLFORM_COPYNAME, param.first.c_str(),
-                                 CURLFORM_COPYCONTENTS, param.second.c_str(),
+                                 CURLFORM_COPYNAME, param.key.c_str(),
+                                 CURLFORM_COPYCONTENTS, param.value.c_str(),
                                  CURLFORM_END);
                 }
+                
                 curl_easy_setopt(curl_handle, CURLOPT_HTTPPOST, formpost);
             }
+            
             curl_easy_setopt(curl_handle, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
-        } else if(method == Method::GET) {
+        } else if (method == Method::GET) {
             curl_easy_setopt(curl_handle, CURLOPT_HTTPGET, 1);
             curl_easy_setopt(curl_handle, CURLOPT_URL, (url + '?' + params).c_str());
         }
@@ -185,24 +208,26 @@ Response CurlSession::DoRequest(const RequestParams &pparams)
         curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, WriteHeaderCallback);
         curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) &responseHeaders);
         
-        if(requestParams.FollowRedirects()) {
+        if (requestParams.FollowRedirects()) {
             curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
         }
-        //curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
-        curl_easy_setopt(curl_handle, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36");
         
-		res = curl_easy_perform(curl_handle);
+        //curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(curl_handle, CURLOPT_USERAGENT,
+                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36");
+        res = curl_easy_perform(curl_handle);
         curl_slist_free_all(header);
-        if(formpost != nullptr) {
+        
+        if (formpost != nullptr) {
             curl_formfree(formpost);
         }
         
-        if(res == CURLE_OK && requestParams.CookiesEnabled()) {
+        if (res == CURLE_OK && requestParams.CookiesEnabled()) {
             response.cookies = ExtractCookies(curl_handle);
-		}
-	}
-    mutex.unlock();
+        }
+    }
     
+    mutex.unlock();
     lastResponse = response;
     return response;
 }

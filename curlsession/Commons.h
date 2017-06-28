@@ -7,23 +7,32 @@
 
 namespace curl
 {
-    enum class Type
-    {
+    enum class Type {
         NOTHING,
         JSON,
         URL,
         MULTIPART
     };
     
-    enum class Method
-    {
+    enum class Method {
         GET = 0,
         POST = 1
     };
     
-    struct Response
-    {
-        std::map<std::string, std::string> headers;
+    struct File {
+        std::string paramName;
+        std::string path;
+    };
+    
+    struct KeyValuePair {
+        std::string key;
+        std::string value;
+    };
+    
+    typedef KeyValuePair Header;
+    
+    struct Response {
+        std::vector<Header> headers;
         std::vector<char> content;
         std::vector<std::string> cookies;
     };

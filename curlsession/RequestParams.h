@@ -4,60 +4,64 @@
 #include <string>
 #include <map>
 
+#include "json.h"
 #include "curl/curl.h"
 
 #include "Commons.h"
-#include "jsonserializer/Serializable.h"
+
 
 namespace curl
-{   
+{
     class RequestParams
     {
-    private:
-        std::string url;
-        std::map<std::string, std::string> headers;
-        std::string params;
-        
-        std::map<std::string, std::string> files;
-        std::map<std::string, std::string> multipartParams;
-        
-        Method method;
-        Type type;
-        bool cookies;
-        bool followRedirects;
-        
-    public:
-        RequestParams(const std::string &url) : RequestParams(url, Method::GET) {}
-        RequestParams(const std::string &url, const Method &method) 
-            : url(url), headers({}), params(""), files({}), multipartParams({}), method(method), 
-            type(Type::NOTHING), cookies(false), followRedirects(false) {}
-        
-        RequestParams & SetUrl(const std::string &url);
-        RequestParams & SetHeaders(const std::map<std::string, std::string> &headers);
-        
-        // set params as JSON
-        RequestParams & SetParams(const jsonserializer::Serializable &params);
-        // set params URL encoded
-        RequestParams & SetParams(const std::map<std::string, std::string> &params);
-        // set params as multipart/form-data
-        RequestParams & SetParams(const std::map<std::string, std::string> &params, const std::map<std::string, std::string> &pathnames);
-        RequestParams & SetParams(const jsonserializer::Serializable &params, const std::map<std::string, std::string> &pathnames);
-        // copy params without further processing
-        RequestParams & SetParams(const std::string &params);
-        
-        RequestParams & SetMethod(const Method &method);
-        RequestParams & EnableCookies(const bool &cookies);
-        RequestParams & FollowRedirects(const bool &cookies);
-
-        auto & GetUrl() { return url; }
-        auto & GetHeaders() { return headers; }
-        auto & GetParams() { return params; }
-        auto & GetFiles() { return files; }
-        auto & GetMultipartParams() { return multipartParams; }
-        auto & GetMethod() { return method; }
-        auto & GetType() { return type; }
-        auto & CookiesEnabled() { return cookies; }
-        auto & FollowRedirects() { return followRedirects; }
+        public:
+            std::string url;
+            std::vector<Header> headers;
+            std::string params;
+            
+            std::vector<File> files;
+            std::vector<KeyValuePair> multipartParams;
+            
+            Method method;
+            Type type;
+            bool cookies;
+            bool followRedirects;
+            
+            
+            RequestParams(const std::string &url) : RequestParams(url, Method::GET) {}
+            RequestParams(const std::string &url, const Method &method)
+                : url(url), headers(), params(), files(), multipartParams(), method(method),
+                  type(Type::NOTHING), cookies(false), followRedirects(false) {}
+                  
+            RequestParams &SetUrl(const std::string &url);
+            RequestParams &SetHeaders(const std::vector<Header> &headers);
+            
+            // set params as JSON
+            RequestParams &SetParams(const json &params);
+            // set params URL encoded
+            RequestParams &SetParams(const std::vector<KeyValuePair> &params);
+            // set params as multipart/form-data
+            RequestParams &SetParams(const std::vector<KeyValuePair> &params,
+                                     const std::vector<File> &pathnames);
+            RequestParams &SetParams(const json &params,
+                                     const std::vector<File> &pathnames);
+            // copy params without further processing
+            RequestParams &SetParams(const std::string &params);
+            
+            RequestParams &SetMethod(const Method &method);
+            RequestParams &EnableCookies(const bool &cookies);
+            RequestParams &FollowRedirects(const bool &cookies);
+            
+            
+            std::string GetUrl() const;
+            std::vector<Header> GetHeaders() const;
+            std::string GetParams() const;
+            std::vector<File> GetFiles() const;
+            std::vector<KeyValuePair> GetMultipartParams() const;
+            Method GetMethod() const;
+            Type GetType() const;
+            bool CookiesEnabled() const;
+            bool FollowRedirects() const;
     };
 }
 
