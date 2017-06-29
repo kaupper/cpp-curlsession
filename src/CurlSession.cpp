@@ -1,65 +1,11 @@
 #include "CurlSession.h"
 
-using namespace curl;
+using namespace curlsession;
 
 
-CurlSession::StaticConstructor::StaticConstructor()
+static std::vector<Cookie> ExtractCookies(CURL *curl_handle)
 {
-    curl_global_init(CURL_GLOBAL_ALL);
-}
-
-CurlSession::CurlSession()
-{
-    curl_handle = curl_easy_init();
-    curl_easy_setopt(curl_handle, CURLOPT_COOKIEFILE, "");
-    curl_easy_setopt(curl_handle, CURLOPT_COOKIEJAR, "");
-}
-
-CurlSession::~CurlSession()
-{
-    curl_easy_cleanup(curl_handle);
-    curl_handle = 0x0;
-}
-
-size_t CurlSession::WriteMemoryCallback(void *contents, size_t size,
-                                        size_t nmemb, void *userPointer)
-{
-    std::vector<char> *result = (std::vector<char> *) userPointer;
-    result->insert(result->end(), (char *)contents,
-                   (char *)contents + (size * nmemb));
-    return size * nmemb;
-}
-
-size_t CurlSession::WriteHeaderCallback(void *contents, size_t size,
-                                        size_t nmemb, void *userPointer)
-{
-    std::vector<Header> *headers = static_cast<std::vector<Header> *>(userPointer);
-    std::string header((const char *) contents, size * nmemb);
-    auto splitPosition = header.find(":");
-    std::string value, key;
-    bool statusLineFound = std::find_if(headers->cbegin(),
-    headers->cend(), [](auto & e) {
-        return e.key == "statusLine";
-    }) != headers->cend();
-    
-    if (splitPosition != std::string::npos) {
-        value = header.substr(splitPosition + 1);
-        key = header.substr(0, splitPosition);
-        trim(value);
-        trim(key);
-        (*headers).push_back({key, value});
-    } else if (!statusLineFound) {
-        trim(header);
-        (*headers).push_back({"statusLine", header});
-    }
-    
-    return size * nmemb;
-}
-
-
-std::vector<std::string> CurlSession::ExtractCookies(CURL *curl_handle)
-{
-    std::vector<std::string> resultingCookies;
+    std::vector<Cookie> resultingCookies;
     struct curl_slist *cookies = {0};
     struct curl_slist *nc;
     CURLcode res;
@@ -72,7 +18,7 @@ std::vector<std::string> CurlSession::ExtractCookies(CURL *curl_handle)
     nc = cookies;
     
     while (nc) {
-        resultingCookies.push_back(nc->data);
+        resultingCookies.push_back(Cookie::FromNetscapeString(nc->data));
         nc = nc->next;
     }
     
@@ -80,73 +26,102 @@ std::vector<std::string> CurlSession::ExtractCookies(CURL *curl_handle)
     return resultingCookies;
 }
 
-std::string CurlSession::GetCookieByName(const std::string &name,
-        const std::vector<std::string> &cookies)
+
+CurlSession::CurlSession()
 {
-    size_t last = 0;
-    size_t next = 0;
+    static bool inited = false;
     
-    for (auto &cookie : cookies) {
-        last = next = 0;
-        std::vector<std::string> splitted;
-        const std::string delimiter = "\t";
-        int count = 0;
-        
-        while ((next = cookie.find(delimiter, last)) != std::string::npos) {
-            if (count >= 5) {
-                splitted.push_back(cookie.substr(last, next - last));
-            }
-            
-            count++;
-            last = next + 1;
-        }
-        
-        splitted.push_back(cookie.substr(last));
-        
-        if (splitted[0] == name) {
-            return splitted[1];
+    if (!inited) {
+        inited = true;
+        curl_global_init(CURL_GLOBAL_ALL);
+    }
+    
+    curl_handle = curl_easy_init();
+    curl_easy_setopt(curl_handle, CURLOPT_COOKIEFILE, "");
+    curl_easy_setopt(curl_handle, CURLOPT_COOKIEJAR, "");
+}
+
+CurlSession::~CurlSession()
+{
+    curl_easy_cleanup(curl_handle);
+    curl_handle = 0x0;
+}
+
+void CurlSession::Cleanup()
+{
+    curl_global_cleanup();
+}
+
+size_t CurlSession::WriteMemoryCallback(void *contents, size_t size,
+                                        size_t nmemb, void *userPointer)
+{
+    std::stringstream *result = static_cast<std::stringstream *>(userPointer);
+    result->write(static_cast<const char *>(contents), size * nmemb);
+    return size * nmemb;
+}
+
+size_t CurlSession::WriteHeaderCallback(void *contents, size_t size,
+                                        size_t nmemb, void *userPointer)
+{
+    std::vector<Header> *headers = static_cast<std::vector<Header> *>(userPointer);
+    std::string headerStr((const char *) contents, size * nmemb);
+    
+    try {
+        headers->push_back(Header::FromString(headerStr));
+    } catch (const std::invalid_argument &ex) {
+        if (size * nmemb > 2) {
+            headers->clear();
+            util::trim(headerStr);
+            headers->push_back({"statusLine", headerStr});
         }
     }
     
-    return "";
+    return size * nmemb;
 }
 
 
-Response CurlSession::DoSingleRequest(const RequestParams &params)
+Response CurlSession::GetLastResponse() const
 {
-    return CurlSession().DoRequest(params);
+    return lastResponse;
 }
 
-Response CurlSession::DoRequest(const RequestParams &requestParams)
+Response CurlSession::DoSingleRequest(Request &request)
+{
+    return CurlSession().DoRequest(request);
+}
+
+Response CurlSession::DoSingleRequest(Request &&request)
+{
+    return DoSingleRequest(request);
+}
+
+Response CurlSession::DoRequest(Request &&request)
+{
+    return DoRequest(request);
+}
+
+Response CurlSession::DoRequest(Request &request)
 {
     static std::mutex mutex;
-    auto url = requestParams.GetUrl();
-    auto headers = requestParams.GetHeaders();
-    auto params = requestParams.GetParams();
-    auto method = requestParams.GetMethod();
     Response response;
     mutex.lock();
     
     if (curl_handle) {
-        auto  &responseContent = response.content;
-        auto &responseHeaders = response.headers;
+        std::stringstream content;
         CURLcode res;
         // append headers
         struct curl_slist *header = NULL;
         struct curl_httppost *formpost = nullptr;
         
-        // set content type if known and not existent
-        if (requestParams.GetType() != Type::NOTHING) {
-            bool hasContentType = std::find_if(headers.cbegin(), headers.cend(),
-            [](auto & e) {
-                return e.key == "Content-Type";
-            }) != headers.cend();
-            
-            if (!hasContentType) {
+        // set content type if known, not existent and desired
+        if (request.type != Type::NOTHING && request.setContentType) {
+            try {
+                request.GetHeaderByName("Content-Type");
+            } catch (const std::out_of_range &ex) {
                 Header h;
-                h.key = "Content-Type";
+                h.name = "Content-Type";
                 
-                switch (requestParams.GetType()) {
+                switch (request.type) {
                     case Type::URL:
                         h.value = "application/x-www-form-urlencoded";
                         break;
@@ -160,38 +135,38 @@ Response CurlSession::DoRequest(const RequestParams &requestParams)
                         break;
                 }
                 
-                headers.push_back(h);
+                request.headers.push_back(h);
             }
         }
         
         // add all headers
-        for (auto &entry : headers) {
-            header = curl_slist_append(header, (entry.key + ": " + entry.value).c_str());
+        for (auto &h : request.headers) {
+            header = curl_slist_append(header, h.ToString().c_str());
         }
         
         curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, header);
         
         // set url depending on method
-        if (method == Method::POST) {
-            if (requestParams.GetType() != Type::MULTIPART) {
-                curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, params.c_str());
-                curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, params.size());
+        if (request.method == Method::POST) {
+            if (request.type != Type::MULTIPART) {
+                curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, request.params.c_str());
+                curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, request.params.size());
             } else {
                 // set multipart form data
                 struct curl_httppost *lastptr = nullptr;
                 
-                for (auto &file : requestParams.GetFiles()) {
+                for (auto &file : request.files) {
                     curl_formadd(&formpost,
                                  &lastptr,
-                                 CURLFORM_COPYNAME, file.paramName.c_str(),
+                                 CURLFORM_COPYNAME, file.name.c_str(),
                                  CURLFORM_FILE, file.path.c_str(),
                                  CURLFORM_END);
                 }
                 
-                for (auto &param : requestParams.GetMultipartParams()) {
+                for (auto &param : request.multipartParams) {
                     curl_formadd(&formpost,
                                  &lastptr,
-                                 CURLFORM_COPYNAME, param.key.c_str(),
+                                 CURLFORM_COPYNAME, param.name.c_str(),
                                  CURLFORM_COPYCONTENTS, param.value.c_str(),
                                  CURLFORM_END);
                 }
@@ -199,19 +174,19 @@ Response CurlSession::DoRequest(const RequestParams &requestParams)
                 curl_easy_setopt(curl_handle, CURLOPT_HTTPPOST, formpost);
             }
             
-            curl_easy_setopt(curl_handle, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(curl_handle, CURLOPT_URL, request.GetURL().c_str());
             curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
-        } else if (method == Method::GET) {
+        } else if (request.method == Method::GET) {
             curl_easy_setopt(curl_handle, CURLOPT_HTTPGET, 1);
-            curl_easy_setopt(curl_handle, CURLOPT_URL, (url + '?' + params).c_str());
+            curl_easy_setopt(curl_handle, CURLOPT_URL, request.GetURL().c_str());
         }
         
         curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
-        curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *) &responseContent);
+        curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *) &content);
         curl_easy_setopt(curl_handle, CURLOPT_HEADERFUNCTION, WriteHeaderCallback);
-        curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) &responseHeaders);
+        curl_easy_setopt(curl_handle, CURLOPT_HEADERDATA, (void *) &response.headers);
         
-        if (requestParams.FollowRedirects()) {
+        if (request.followRedirects) {
             curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
         }
         
@@ -225,12 +200,49 @@ Response CurlSession::DoRequest(const RequestParams &requestParams)
             curl_formfree(formpost);
         }
         
-        if (res == CURLE_OK && requestParams.CookiesEnabled()) {
-            response.cookies = ExtractCookies(curl_handle);
+        if (res == CURLE_OK && request.cookies) {
+            for (auto &h : response.headers) {
+                if (h.name == "Set-Cookie") {
+                    response.cookies.push_back(Cookie::FromHeaderString(h.value));
+                }
+            }
         }
+        
+        // set content
+        response.content = content.str();
+        // extract status line and delete it from the header vector
+        auto statusLineHeader = response.GetHeaderByName("statusLine");
+        auto statusLine = statusLineHeader.value;
+        auto split = statusLine.find(' ');
+        // version
+        response.version = statusLine.substr(0, split);
+        statusLine = statusLine.substr(split + 1);
+        split = statusLine.find(' ');
+        // status code
+        response.code = std::stoi(statusLine.substr(0, split));
+        statusLine = statusLine.substr(split + 1);
+        // reason
+        response.reason = statusLine;
+        // delete from headers
+        auto it = std::remove_if(response.headers.begin(),
+        response.headers.end(), [](auto & h) {
+            return h.name == "statusLine";
+        });
+        response.headers.resize(std::distance(response.headers.begin(), it));
     }
     
-    mutex.unlock();
     lastResponse = response;
+    mutex.unlock();
     return response;
+}
+
+
+std::vector<Cookie> CurlSession::GetCookies() const
+{
+    return ExtractCookies(curl_handle);
+}
+
+Cookie CurlSession::GetCookieByName(const std::string &name) const
+{
+    return util::GetByName(name, GetCookies(), "Cookie");
 }

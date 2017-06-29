@@ -4,15 +4,14 @@ project (curlsession)
 include(FindCURL)
 
 set(SOURCES 
-${PROJECT_SOURCE_DIR}/src/CurlSession.cpp 
-${PROJECT_SOURCE_DIR}/src/RequestParams.cpp
-${PROJECT_SOURCE_DIR}/src/entities.cpp
+    ${PROJECT_SOURCE_DIR}/src/CurlSession.cpp 
+    ${PROJECT_SOURCE_DIR}/src/RequestBuilder.cpp
+    ${PROJECT_SOURCE_DIR}/src/Commons.cpp
+    ${PROJECT_SOURCE_DIR}/src/entities.cpp
 )
 
-include_directories(${PROJECT_SOURCE_DIR}/curlsession ${PROJECT_SOURCE_DIR})
-include_directories(${OPENSSL_INCLUDE_DIRS} ${CURL_INCLUDE_DIRS})
-link_directories(${OPENSSL_LIBRARIES} ${CURL_LIBRARIES})
-
 add_library(${PROJECT_NAME} STATIC ${SOURCES})
-target_include_directories (${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR})
+target_include_directories (${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME} PRIVATE ${OPENSSL_INCLUDE_DIRS} ${CURL_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCE_DIR}/include/curlsession)
 target_link_libraries(${PROJECT_NAME} LINK_PUBLIC "curl")
