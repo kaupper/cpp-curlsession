@@ -9,7 +9,7 @@ static inline std::string to_string(const json &j)
     if (j.type() == json::value_t::string) {
         return j.get<std::string>();
     }
-    
+
     return j.dump();
 }
 
@@ -17,21 +17,21 @@ static std::string UrlEncode(const std::vector<Parameter> &map)
 {
     std::string result = "";
     char *first, *second;
-    
+
     for (size_t i = 0; i < map.size(); ++i) {
         auto &pair = map[i];
         first = curl_easy_escape(nullptr, pair.name.c_str(), 0);
         second = curl_easy_escape(nullptr, pair.value.c_str(), 0);
         result += std::string(first) + '=' + std::string(second);
-        
+
         if (i < map.size() - 1) {
             result += '&';
         }
-        
+
         curl_free(first);
         curl_free(second);
     }
-    
+
     return result;
 }
 
@@ -100,11 +100,11 @@ RequestBuilder &RequestBuilder::SetMultipartParams(const json &params,
         const std::vector<File> &pathNames)
 {
     std::vector<Parameter> mappedParams;
-    
+
     for (auto it = params.begin(); it != params.end(); ++it) {
-        mappedParams.push_back({it.key(), to_string(it->dump())});
+        mappedParams.push_back({it.key(), to_string(*it)});
     }
-    
+
     return SetMultipartParams(mappedParams, pathNames);
 }
 

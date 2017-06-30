@@ -115,28 +115,31 @@ Response CurlSession::DoRequest(Request &request)
         
         // set content type if known, not existent and desired
         if (request.type != Type::NOTHING && request.setContentType) {
-            try {
-                request.GetHeaderByName("Content-Type");
-            } catch (const std::out_of_range &ex) {
-                Header h;
-                h.name = "Content-Type";
-                
-                switch (request.type) {
-                    case Type::URL:
-                        h.value = "application/x-www-form-urlencoded";
-                        break;
-                        
-                    case Type::JSON:
-                        h.value = "application/json";
-                        break;
-                        
-                    case Type::MULTIPART:
-                        h.value = "multipart/form-data";
-                        break;
-                }
-                
-                request.headers.push_back(h);
+            Header h;
+            h.name = "Content-Type";
+            
+            switch (request.type) {
+                case Type::URL:
+                    h.value = "application/x-www-form-urlencoded";
+                    break;
+                    
+                case Type::JSON:
+                    h.value = "application/json";
+                    break;
+                    
+                case Type::MULTIPART:
+                    h.value = "multipart/form-data";
+                    break;
             }
+            
+            for (auto it = request.headers.begin(); it != request.headers.end(); ++it) {
+                if (it->name == h.name) {
+                    request.headers.erase(it);
+                    break;
+                }
+            }
+            
+            request.headers.push_back(h);
         }
         
         // add all headers
@@ -151,21 +154,20 @@ Response CurlSession::DoRequest(Request &request)
             if (request.type != Type::MULTIPART) {
                 curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, request.params.c_str());
                 curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, request.params.size());
+                curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
             } else {
                 // set multipart form data
                 struct curl_httppost *lastptr = nullptr;
                 
                 for (auto &file : request.files) {
-                    curl_formadd(&formpost,
-                                 &lastptr,
+                    curl_formadd(&formpost, &lastptr,
                                  CURLFORM_COPYNAME, file.name.c_str(),
                                  CURLFORM_FILE, file.path.c_str(),
                                  CURLFORM_END);
                 }
                 
                 for (auto &param : request.multipartParams) {
-                    curl_formadd(&formpost,
-                                 &lastptr,
+                    curl_formadd(&formpost, &lastptr,
                                  CURLFORM_COPYNAME, param.name.c_str(),
                                  CURLFORM_COPYCONTENTS, param.value.c_str(),
                                  CURLFORM_END);
@@ -175,7 +177,6 @@ Response CurlSession::DoRequest(Request &request)
             }
             
             curl_easy_setopt(curl_handle, CURLOPT_URL, request.GetURL().c_str());
-            curl_easy_setopt(curl_handle, CURLOPT_POST, 1);
         } else if (request.method == Method::GET) {
             curl_easy_setopt(curl_handle, CURLOPT_HTTPGET, 1);
             curl_easy_setopt(curl_handle, CURLOPT_URL, request.GetURL().c_str());
@@ -190,7 +191,7 @@ Response CurlSession::DoRequest(Request &request)
             curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
         }
         
-        //curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
+//        curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
         curl_easy_setopt(curl_handle, CURLOPT_USERAGENT,
                          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36");
         res = curl_easy_perform(curl_handle);
